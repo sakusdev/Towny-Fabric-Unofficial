@@ -64,6 +64,8 @@ jobs:
         with:
           name: fabric-towny-build
           path: |
+            source-archive.zip.b64
+            source-archive.zip
             fabric-towny/build/libs/*.jar
             fabric-towny/build/reports/**
           if-no-files-found: ignore

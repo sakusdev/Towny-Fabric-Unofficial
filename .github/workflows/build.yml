@@ -13,10 +13,41 @@ jobs:
 
       - name: Restore source tree
         run: |
-          base64 --decode source-archive.zip.b64 > source-archive.zip
-          unzip -q source-archive.zip
-          cp -a fabric-towny/. .
-          rm -rf fabric-towny source-archive.zip
+          python3 - <<'PY'
+          import base64
+          import pathlib
+          import shutil
+          import zipfile
+
+          encoded_path = pathlib.Path('source-archive.zip.b64')
+          raw = ''.join(encoded_path.read_text(encoding='utf-8').split())
+          raw += '=' * (-len(raw) % 4)
+          archive_path = pathlib.Path('source-archive.zip')
+          archive_path.write_bytes(base64.b64decode(raw, validate=False))
+
+          with zipfile.ZipFile(archive_path) as archive:
+              bad = archive.testzip()
+              if bad is not None:
+                  raise RuntimeError(f'Corrupt ZIP member: {bad}')
+              archive.extractall('.')
+
+          source_root = pathlib.Path('fabric-towny')
+          if not source_root.is_dir():
+              raise RuntimeError('Expected fabric-towny directory was not extracted')
+
+          for child in source_root.iterdir():
+              destination = pathlib.Path(child.name)
+              if child.is_dir():
+                  shutil.copytree(child, destination, dirs_exist_ok=True)
+              else:
+                  shutil.copy2(child, destination)
+
+          shutil.rmtree(source_root)
+          archive_path.unlink(missing_ok=True)
+          PY
+          test -f build.gradle
+          test -f gradle.properties
+          test -d src/main/java
 
       - name: Apply Fabric 26.2 build fixes
         run: |

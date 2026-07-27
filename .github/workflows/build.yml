@@ -18,6 +18,14 @@ jobs:
           cp -a fabric-towny/. .
           rm -rf fabric-towny source-archive.zip
 
+      - name: Apply Fabric 26.2 build fixes
+        run: |
+          sed -i "s/id 'fabric-loom'/id 'net.fabricmc.fabric-loom'/" build.gradle
+          sed -i 's/fabric_version=0.155.0+26.2/fabric_version=0.155.2+26.2/' gradle.properties
+          grep -q '^org.gradle.configuration-cache=' gradle.properties || echo 'org.gradle.configuration-cache=false' >> gradle.properties
+          cat build.gradle
+          cat gradle.properties
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -29,7 +37,7 @@ jobs:
           gradle-version: '9.5.1'
 
       - name: Build
-        run: gradle build --stacktrace
+        run: gradle build --stacktrace --info
 
       - uses: actions/upload-artifact@v4
         if: always()

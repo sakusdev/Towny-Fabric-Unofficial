@@ -37,13 +37,17 @@ jobs:
           gradle-version: '9.5.1'
 
       - name: Build
-        run: gradle -p fabric-towny build --stacktrace --info
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle -p fabric-towny build --stacktrace --info 2>&1 | tee build.log
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: fabric-towny-build
           path: |
+            build.log
             fabric-towny/build/libs/*.jar
             fabric-towny/build/reports/**
           if-no-files-found: ignore

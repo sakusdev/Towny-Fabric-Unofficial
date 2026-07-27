@@ -1,0 +1,41 @@
+name: build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Restore source tree
+        run: |
+          base64 --decode source-archive.zip.b64 > source-archive.zip
+          unzip -q source-archive.zip
+          cp -a fabric-towny/. .
+          rm -rf fabric-towny source-archive.zip
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: gradle
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.5.1'
+
+      - name: Build
+        run: gradle build --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fabric-towny-build
+          path: |
+            build/libs/*.jar
+            build/reports/**
+          if-no-files-found: ignore

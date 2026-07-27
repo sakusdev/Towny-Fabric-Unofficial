@@ -13,27 +13,7 @@ jobs:
 
       - name: Restore source tree
         run: |
-          python3 - <<'PY'
-          import base64
-          import pathlib
-          import zipfile
-
-          encoded_path = pathlib.Path('source-archive.zip.b64')
-          raw = ''.join(encoded_path.read_text(encoding='utf-8').split())
-          raw += '=' * (-len(raw) % 4)
-          archive_path = pathlib.Path('source-archive.zip')
-          archive_path.write_bytes(base64.b64decode(raw, validate=False))
-
-          with zipfile.ZipFile(archive_path) as archive:
-              bad = archive.testzip()
-              if bad is not None:
-                  raise RuntimeError(f'Corrupt ZIP member: {bad}')
-              archive.extractall('.')
-
-          source_root = pathlib.Path('fabric-towny')
-          if not source_root.is_dir():
-              raise RuntimeError('Expected fabric-towny directory was not extracted')
-          PY
+          tar -xJf source-archive.tar.xz
           test -f fabric-towny/build.gradle
           test -f fabric-towny/gradle.properties
           test -d fabric-towny/src/main/java
@@ -64,8 +44,6 @@ jobs:
         with:
           name: fabric-towny-build
           path: |
-            source-archive.zip.b64
-            source-archive.zip
             fabric-towny/build/libs/*.jar
             fabric-towny/build/reports/**
           if-no-files-found: ignore

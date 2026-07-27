@@ -16,7 +16,6 @@ jobs:
           python3 - <<'PY'
           import base64
           import pathlib
-          import shutil
           import zipfile
 
           encoded_path = pathlib.Path('source-archive.zip.b64')
@@ -34,28 +33,18 @@ jobs:
           source_root = pathlib.Path('fabric-towny')
           if not source_root.is_dir():
               raise RuntimeError('Expected fabric-towny directory was not extracted')
-
-          for child in source_root.iterdir():
-              destination = pathlib.Path(child.name)
-              if child.is_dir():
-                  shutil.copytree(child, destination, dirs_exist_ok=True)
-              else:
-                  shutil.copy2(child, destination)
-
-          shutil.rmtree(source_root)
-          archive_path.unlink(missing_ok=True)
           PY
-          test -f build.gradle
-          test -f gradle.properties
-          test -d src/main/java
+          test -f fabric-towny/build.gradle
+          test -f fabric-towny/gradle.properties
+          test -d fabric-towny/src/main/java
 
       - name: Apply Fabric 26.2 build fixes
         run: |
-          sed -i "s/id 'fabric-loom'/id 'net.fabricmc.fabric-loom'/" build.gradle
-          sed -i 's/fabric_version=0.155.0+26.2/fabric_version=0.155.2+26.2/' gradle.properties
-          grep -q '^org.gradle.configuration-cache=' gradle.properties || echo 'org.gradle.configuration-cache=false' >> gradle.properties
-          cat build.gradle
-          cat gradle.properties
+          sed -i "s/id 'fabric-loom'/id 'net.fabricmc.fabric-loom'/" fabric-towny/build.gradle
+          sed -i 's/fabric_version=0.155.0+26.2/fabric_version=0.155.2+26.2/' fabric-towny/gradle.properties
+          grep -q '^org.gradle.configuration-cache=' fabric-towny/gradle.properties || echo 'org.gradle.configuration-cache=false' >> fabric-towny/gradle.properties
+          cat fabric-towny/build.gradle
+          cat fabric-towny/gradle.properties
 
       - uses: actions/setup-java@v4
         with:
@@ -68,13 +57,13 @@ jobs:
           gradle-version: '9.5.1'
 
       - name: Build
-        run: gradle build --stacktrace --info
+        run: gradle -p fabric-towny build --stacktrace --info
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: fabric-towny-build
           path: |
-            build/libs/*.jar
-            build/reports/**
+            fabric-towny/build/libs/*.jar
+            fabric-towny/build/reports/**
           if-no-files-found: ignore

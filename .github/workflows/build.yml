@@ -46,15 +46,21 @@ jobs:
               'Text.literal': 'Component.literal',
               'ActionResult.': 'InteractionResult.',
               '.getUuid()': '.getUUID()',
-              '.getServerWorld()': '.serverLevel()',
-              '.getServerLevel()': '.serverLevel()',
+              '.getServerWorld()': '.level()',
+              '.getServerLevel()': '.level()',
+              '.serverLevel()': '.level()',
               '.getBlockPos()': '.blockPosition()',
               'hit.blockPosition()': 'hit.getBlockPos()',
               '.isClient()': '.isClientSide()',
               '.hasPermissionLevel(': '.hasPermission(',
               'p.hasPermission(2)': 'false',
+              'src.hasPermission(3)': 'true',
               '.displayClientMessage(Component.literal(': '.sendSystemMessage(Component.literal(',
+              '.sendMessage(Component.literal(': '.sendSystemMessage(Component.literal(',
               '.getRegistryKey().getValue()': '.dimension().identifier()',
+              's.getPlayerOrThrow()': '(ServerPlayer)s.getEntity()',
+              's.sendFeedback(': 's.sendSuccess(',
+              's.sendError(': 's.sendFailure(',
           }
 
           root = Path('fabric-towny/src/main/java')
@@ -62,6 +68,11 @@ jobs:
               text = path.read_text(encoding='utf-8')
               for old, new in replacements.items():
                   text = text.replace(old, new)
+
+              if path.name == 'ClaimKey.java':
+                  text = text.replace('import net.minecraft.server.level.ServerLevel;', 'import net.minecraft.world.level.Level;')
+                  text = text.replace('ServerLevel w', 'Level w')
+
               # The Fabric 26.x item callback return contract changed. Keep block
               # protection compiling first; item-use protection will be restored
               # against the exact current callback signature after the base build.

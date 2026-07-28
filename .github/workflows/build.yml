@@ -26,6 +26,41 @@ jobs:
           sed -i 's/modCompileOnly /compileOnly /g' fabric-towny/build.gradle
           sed -i 's/fabric_version=0.155.0+26.2/fabric_version=0.155.2+26.2/' fabric-towny/gradle.properties
           grep -q '^org.gradle.configuration-cache=' fabric-towny/gradle.properties || echo 'org.gradle.configuration-cache=false' >> fabric-towny/gradle.properties
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          replacements = {
+              'net.minecraft.server.world.ServerWorld': 'net.minecraft.server.level.ServerLevel',
+              'net.minecraft.util.math.BlockPos': 'net.minecraft.core.BlockPos',
+              'net.minecraft.server.network.ServerPlayerEntity': 'net.minecraft.server.level.ServerPlayer',
+              'net.minecraft.server.command.ServerCommandSource': 'net.minecraft.commands.CommandSourceStack',
+              'net.minecraft.server.command.CommandManager.literal': 'net.minecraft.commands.Commands.literal',
+              'net.minecraft.server.command.CommandManager.argument': 'net.minecraft.commands.Commands.argument',
+              'net.minecraft.text.Text': 'net.minecraft.network.chat.Component',
+              'net.minecraft.util.ActionResult': 'net.minecraft.world.InteractionResult',
+              'ServerWorld': 'ServerLevel',
+              'ServerPlayerEntity': 'ServerPlayer',
+              'ServerCommandSource': 'CommandSourceStack',
+              'Text.literal': 'Component.literal',
+              'ActionResult.': 'InteractionResult.',
+              '.getUuid()': '.getUUID()',
+              '.getServerWorld()': '.serverLevel()',
+              '.getBlockPos()': '.blockPosition()',
+              '.isClient()': '.isClientSide()',
+              '.hasPermissionLevel(': '.hasPermission(',
+              '.sendMessage(Component.literal(': '.displayClientMessage(Component.literal(',
+              '.getRegistryKey().getValue()': '.dimension().location()',
+          }
+
+          root = Path('fabric-towny/src/main/java')
+          for path in root.rglob('*.java'):
+              text = path.read_text(encoding='utf-8')
+              for old, new in replacements.items():
+                  text = text.replace(old, new)
+              path.write_text(text, encoding='utf-8')
+          PY
+
           cat fabric-towny/build.gradle
           cat fabric-towny/gradle.properties
 

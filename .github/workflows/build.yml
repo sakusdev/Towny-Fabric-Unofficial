@@ -21,6 +21,24 @@ jobs:
           test -d fabric-towny/src/main/java
           test -d fabric-towny/src/test/java
 
+      - name: Restore Fabric 26.2 item-use protection
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('fabric-towny/src/main/java/dev/sakus/fabrictowny/protection/ProtectionHooks.java')
+          text = path.read_text(encoding='utf-8')
+          if 'UseItemCallback.EVENT.register' not in text:
+              marker = '  UseBlockCallback.EVENT.register((p,w,h,hit)->{if(w.isClientSide()||!(p instanceof ServerPlayer sp))return InteractionResult.PASS;return check(e,sp,ClaimKey.of(sp.level(),hit.getBlockPos()),PermissionAction.SWITCH)?InteractionResult.PASS:InteractionResult.FAIL;});\n'
+              callback = '  UseItemCallback.EVENT.register((p,w,h)->{if(w.isClientSide()||!(p instanceof ServerPlayer sp))return InteractionResult.PASS;return check(e,sp,ClaimKey.of(sp.level(),sp.blockPosition()),PermissionAction.ITEM_USE)?InteractionResult.PASS:InteractionResult.FAIL;});\n'
+              if marker not in text:
+                  raise SystemExit('UseBlockCallback marker not found')
+              text = text.replace(marker, marker + callback)
+              path.write_text(text, encoding='utf-8')
+          PY
+          grep -n 'UseItemCallback.EVENT.register' fabric-towny/src/main/java/dev/sakus/fabrictowny/protection/ProtectionHooks.java
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -52,9 +70,8 @@ jobs:
           latest='fabric-towny/run/logs/latest.log'
           test -f "$latest"
           grep -Eiq 'Done \([0-9.]+s\)!|Done \([0-9.]+s\)|Dedicated server took|For help, type' "$latest"
-          grep -Eiq 'fabric-towny|Fabric Towny|Towny' "$latest"
+          grep -Eiq 'Fabric Towny loaded|fabrictowny' "$latest"
 
-          # A timeout is expected because a healthy server keeps running.
           if [ "$status" -ne 0 ] && [ "$status" -ne 124 ] && [ "$status" -ne 130 ]; then
             exit "$status"
           fi

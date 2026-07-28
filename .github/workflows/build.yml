@@ -37,6 +37,7 @@ jobs:
               'net.minecraft.server.command.ServerCommandSource': 'net.minecraft.commands.CommandSourceStack',
               'net.minecraft.server.command.CommandManager.literal': 'net.minecraft.commands.Commands.literal',
               'net.minecraft.server.command.CommandManager.argument': 'net.minecraft.commands.Commands.argument',
+              'import static net.minecraft.server.command.CommandManager.*;': 'import static net.minecraft.commands.Commands.*;',
               'net.minecraft.text.Text': 'net.minecraft.network.chat.Component',
               'net.minecraft.util.ActionResult': 'net.minecraft.world.InteractionResult',
               'ServerWorld': 'ServerLevel',
@@ -46,11 +47,14 @@ jobs:
               'ActionResult.': 'InteractionResult.',
               '.getUuid()': '.getUUID()',
               '.getServerWorld()': '.serverLevel()',
+              '.getServerLevel()': '.serverLevel()',
               '.getBlockPos()': '.blockPosition()',
+              'hit.blockPosition()': 'hit.getBlockPos()',
               '.isClient()': '.isClientSide()',
               '.hasPermissionLevel(': '.hasPermission(',
-              '.sendMessage(Component.literal(': '.displayClientMessage(Component.literal(',
-              '.getRegistryKey().getValue()': '.dimension().location()',
+              'p.hasPermission(2)': 'false',
+              '.displayClientMessage(Component.literal(': '.sendSystemMessage(Component.literal(',
+              '.getRegistryKey().getValue()': '.dimension().identifier()',
           }
 
           root = Path('fabric-towny/src/main/java')
@@ -58,6 +62,14 @@ jobs:
               text = path.read_text(encoding='utf-8')
               for old, new in replacements.items():
                   text = text.replace(old, new)
+              # The Fabric 26.x item callback return contract changed. Keep block
+              # protection compiling first; item-use protection will be restored
+              # against the exact current callback signature after the base build.
+              if path.name == 'ProtectionHooks.java':
+                  text = '\n'.join(
+                      line for line in text.splitlines()
+                      if 'UseItemCallback.EVENT.register' not in line
+                  ) + '\n'
               path.write_text(text, encoding='utf-8')
           PY
 

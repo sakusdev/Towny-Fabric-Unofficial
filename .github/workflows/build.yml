@@ -34,8 +34,7 @@ jobs:
               callback = '  UseItemCallback.EVENT.register((p,w,h)->{if(w.isClientSide()||!(p instanceof ServerPlayer sp))return InteractionResult.PASS;return check(e,sp,ClaimKey.of(sp.level(),sp.blockPosition()),PermissionAction.ITEM_USE)?InteractionResult.PASS:InteractionResult.FAIL;});\n'
               if marker not in text:
                   raise SystemExit('UseBlockCallback marker not found')
-              text = text.replace(marker, marker + callback)
-              path.write_text(text, encoding='utf-8')
+              path.write_text(text.replace(marker, marker + callback), encoding='utf-8')
           PY
           grep -n 'UseItemCallback.EVENT.register' fabric-towny/src/main/java/dev/sakus/fabrictowny/protection/ProtectionHooks.java
 
@@ -61,6 +60,16 @@ jobs:
           set -o pipefail
           mkdir -p fabric-towny/run
           printf 'eula=true\n' > fabric-towny/run/eula.txt
+          cat > fabric-towny/run/server.properties <<'PROPERTIES'
+          online-mode=false
+          server-port=25565
+          level-name=world
+          max-players=1
+          view-distance=2
+          simulation-distance=2
+          sync-chunk-writes=true
+          PROPERTIES
+
           set +e
           timeout --signal=INT --kill-after=15s 120s \
             gradle -p fabric-towny runServer --stacktrace --info 2>&1 | tee server-smoke.log
@@ -68,9 +77,38 @@ jobs:
           set -e
 
           latest='fabric-towny/run/logs/latest.log'
+          config='fabric-towny/run/config/fabric-towny/config.json'
+          data='fabric-towny/run/config/fabric-towny/data.json'
           test -f "$latest"
-          grep -Eiq 'Done \([0-9.]+s\)!|Done \([0-9.]+s\)|Dedicated server took|For help, type' "$latest"
-          grep -Eiq 'Fabric Towny loaded|fabrictowny' "$latest"
+          test -f "$config"
+          test -f "$data"
+          grep -Eiq 'Done \([0-9.]+s\)!|Done \([0-9.]+s\)|For help, type' "$latest"
+          grep -Eiq 'Fabric Towny loaded: 0 towns, 0 nations, 0 blocks' "$latest"
+          ! grep -Eiq 'Failed to load properties|Exception|Crash report' "$latest"
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          config = json.loads(Path('fabric-towny/run/config/fabric-towny/config.json').read_text())
+          data = json.loads(Path('fabric-towny/run/config/fabric-towny/data.json').read_text())
+          required = {
+              'townCreationCost', 'nationCreationCost', 'claimCost', 'outpostCost',
+              'baseTownBlocks', 'blocksPerResident', 'maxOutposts',
+              'inviteLifetimeMillis', 'newDayIntervalMillis',
+              'requireAdjacentClaims', 'allowFriendlyFire', 'wildernessBuild'
+          }
+          missing = sorted(required - config.keys())
+          if missing:
+              raise SystemExit(f'missing config keys: {missing}')
+          if data.get('schemaVersion') != 3:
+              raise SystemExit(f"unexpected schemaVersion: {data.get('schemaVersion')}")
+          for key in ('residents', 'towns', 'nations', 'blocks', 'invitations', 'wars'):
+              if not isinstance(data.get(key), dict):
+                  raise SystemExit(f'{key} is not an object')
+          if not isinstance(data.get('nextNewDayAt'), int) or data['nextNewDayAt'] <= 0:
+              raise SystemExit('nextNewDayAt was not initialized')
+          PY
 
           if [ "$status" -ne 0 ] && [ "$status" -ne 124 ] && [ "$status" -ne 130 ]; then
             exit "$status"

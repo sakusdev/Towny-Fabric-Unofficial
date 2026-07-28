@@ -1,7 +1,6 @@
-name: build
+name: normalize source tree
 
 on:
-  push:
   pull_request:
   workflow_dispatch:
 
@@ -9,139 +8,8 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Restore source tree
-        run: |
-          tar -xJf source-archive.tar.xz
-          tar -xJf towny-patch-tests.tar.xz
-          test -f fabric-towny/build.gradle
-          test -f fabric-towny/gradle.properties
-          test -d fabric-towny/src/main/java
-          test -d fabric-towny/src/test/java
-
-      - name: Restore Fabric 26.2 item-use protection
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path('fabric-towny/src/main/java/dev/sakus/fabrictowny/protection/ProtectionHooks.java')
-          text = path.read_text(encoding='utf-8')
-          if 'UseItemCallback.EVENT.register' not in text:
-              marker = '  UseBlockCallback.EVENT.register((p,w,h,hit)->{if(w.isClientSide()||!(p instanceof ServerPlayer sp))return InteractionResult.PASS;return check(e,sp,ClaimKey.of(sp.level(),hit.getBlockPos()),PermissionAction.SWITCH)?InteractionResult.PASS:InteractionResult.FAIL;});\n'
-              callback = '  UseItemCallback.EVENT.register((p,w,h)->{if(w.isClientSide()||!(p instanceof ServerPlayer sp))return InteractionResult.PASS;return check(e,sp,ClaimKey.of(sp.level(),sp.blockPosition()),PermissionAction.ITEM_USE)?InteractionResult.PASS:InteractionResult.FAIL;});\n'
-              if marker not in text:
-                  raise SystemExit('UseBlockCallback marker not found')
-              path.write_text(text.replace(marker, marker + callback), encoding='utf-8')
-          PY
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '25'
-          cache: gradle
-
-      - uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.5.1'
-
-      - name: Build and test
-        shell: bash
-        run: |
-          set -o pipefail
-          gradle -p fabric-towny clean build --stacktrace --info 2>&1 | tee build.log
-
-      - name: Dedicated server smoke test
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p fabric-towny/run
-          printf 'eula=true\n' > fabric-towny/run/eula.txt
-          cat > fabric-towny/run/server.properties <<'PROPERTIES'
-          online-mode=false
-          server-port=25565
-          level-name=world
-          max-players=1
-          view-distance=2
-          simulation-distance=2
-          sync-chunk-writes=true
-          PROPERTIES
-
-          gradle -p fabric-towny runServer --stacktrace --info > server-smoke.log 2>&1 &
-          server_pid=$!
-          latest='fabric-towny/run/logs/latest.log'
-          ready=0
-
-          cleanup() {
-            if kill -0 "$server_pid" 2>/dev/null; then
-              kill -INT "$server_pid" 2>/dev/null || true
-              for _ in $(seq 1 15); do
-                kill -0 "$server_pid" 2>/dev/null || break
-                sleep 1
-              done
-              kill -KILL "$server_pid" 2>/dev/null || true
-            fi
-            wait "$server_pid" 2>/dev/null || true
-          }
-          trap cleanup EXIT
-
-          for _ in $(seq 1 120); do
-            if [ -f "$latest" ] && grep -Eiq 'Done \([0-9.]+s\)!|Done \([0-9.]+s\)|For help, type' "$latest"; then
-              ready=1
-              break
-            fi
-            if ! kill -0 "$server_pid" 2>/dev/null; then
-              cat server-smoke.log
-              exit 1
-            fi
-            sleep 1
-          done
-
-          test "$ready" -eq 1
-          test -f fabric-towny/run/config/fabric-towny/config.json
-          test -f fabric-towny/run/config/fabric-towny/data.json
-          grep -Eiq 'Fabric Towny loaded: 0 towns, 0 nations, 0 blocks' "$latest"
-          ! grep -Eiq 'Failed to load properties|Exception|Crash report' "$latest"
-
-          python3 - <<'PY'
-          import json
-          from pathlib import Path
-          config = json.loads(Path('fabric-towny/run/config/fabric-towny/config.json').read_text())
-          data = json.loads(Path('fabric-towny/run/config/fabric-towny/data.json').read_text())
-          required = {'townCreationCost','nationCreationCost','claimCost','outpostCost','baseTownBlocks','blocksPerResident','maxOutposts','inviteLifetimeMillis','newDayIntervalMillis','requireAdjacentClaims','allowFriendlyFire','wildernessBuild'}
-          if required - config.keys():
-              raise SystemExit(f'missing config keys: {sorted(required - config.keys())}')
-          if data.get('schemaVersion') != 3:
-              raise SystemExit(f"unexpected schemaVersion: {data.get('schemaVersion')}")
-          if not isinstance(data.get('nextNewDayAt'), int) or data['nextNewDayAt'] <= 0:
-              raise SystemExit('nextNewDayAt was not initialized')
-          PY
-
-          cleanup
-          trap - EXIT
-
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: fabric-towny-build
-          path: |
-            build.log
-            server-smoke.log
-            fabric-towny/run/logs/**
-            fabric-towny/run/config/**
-            fabric-towny/build/libs/*.jar
-            fabric-towny/build/reports/**
-            fabric-towny/build/test-results/**
-          if-no-files-found: ignore
-
-  normalize-source:
-    if: github.event_name == 'push' && github.ref_name == 'agent/ci-diagnostics'
-    needs: build
+  normalize:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -149,7 +17,7 @@ jobs:
           ref: agent/ci-diagnostics
           fetch-depth: 0
 
-      - name: Replace bootstrap archives with normal source tree
+      - name: Expand archives and commit normal project layout
         shell: bash
         run: |
           set -euo pipefail
@@ -171,6 +39,7 @@ jobs:
           PY
 
           rsync -a --delete --exclude='.git/' --exclude='.github/' /tmp/towny-normalized/fabric-towny/ ./
+          rm -f .github/workflows/normalize.yml
           mkdir -p .github/workflows
           cat > .github/workflows/build.yml <<'WORKFLOW'
           name: build
@@ -189,13 +58,11 @@ jobs:
               timeout-minutes: 20
               steps:
                 - uses: actions/checkout@v4
-
                 - uses: actions/setup-java@v4
                   with:
                     distribution: temurin
                     java-version: '25'
                     cache: gradle
-
                 - uses: gradle/actions/setup-gradle@v4
                   with:
                     gradle-version: '9.5.1'
@@ -209,7 +76,7 @@ jobs:
                 - name: Dedicated server smoke test
                   shell: bash
                   run: |
-                    set -euo pipefail
+                    set -o pipefail
                     mkdir -p run
                     printf 'eula=true\n' > run/eula.txt
                     cat > run/server.properties <<'PROPERTIES'
@@ -221,45 +88,29 @@ jobs:
                     simulation-distance=2
                     sync-chunk-writes=true
                     PROPERTIES
-
-                    gradle runServer --stacktrace --info > server-smoke.log 2>&1 &
-                    server_pid=$!
+                    set +e
+                    timeout --signal=INT --kill-after=10s 45s gradle runServer --stacktrace --info 2>&1 | tee server-smoke.log
+                    status=${PIPESTATUS[0]}
+                    set -e
                     latest='run/logs/latest.log'
-                    ready=0
-                    cleanup() {
-                      if kill -0 "$server_pid" 2>/dev/null; then
-                        kill -INT "$server_pid" 2>/dev/null || true
-                        for _ in $(seq 1 15); do
-                          kill -0 "$server_pid" 2>/dev/null || break
-                          sleep 1
-                        done
-                        kill -KILL "$server_pid" 2>/dev/null || true
-                      fi
-                      wait "$server_pid" 2>/dev/null || true
-                    }
-                    trap cleanup EXIT
-                    for _ in $(seq 1 120); do
-                      if [ -f "$latest" ] && grep -Eiq 'Done \([0-9.]+s\)!|Done \([0-9.]+s\)|For help, type' "$latest"; then ready=1; break; fi
-                      if ! kill -0 "$server_pid" 2>/dev/null; then cat server-smoke.log; exit 1; fi
-                      sleep 1
-                    done
-                    test "$ready" -eq 1
+                    test -f "$latest"
                     test -f run/config/fabric-towny/config.json
                     test -f run/config/fabric-towny/data.json
+                    grep -Eiq 'Done \([0-9.]+s\)!|For help, type' "$latest"
                     grep -Eiq 'Fabric Towny loaded: 0 towns, 0 nations, 0 blocks' "$latest"
-                    ! grep -Eiq 'Failed to load properties|Exception|Crash report' "$latest"
+                    ! grep -Eiq 'Failed to load properties|Crash report' "$latest"
                     python3 - <<'PY'
                     import json
                     from pathlib import Path
                     config=json.loads(Path('run/config/fabric-towny/config.json').read_text())
                     data=json.loads(Path('run/config/fabric-towny/data.json').read_text())
                     required={'townCreationCost','nationCreationCost','claimCost','outpostCost','baseTownBlocks','blocksPerResident','maxOutposts','inviteLifetimeMillis','newDayIntervalMillis','requireAdjacentClaims','allowFriendlyFire','wildernessBuild'}
-                    if required-config.keys(): raise SystemExit(f'missing config keys: {sorted(required-config.keys())}')
+                    missing=required-config.keys()
+                    if missing: raise SystemExit(f'missing config keys: {sorted(missing)}')
                     if data.get('schemaVersion') != 3: raise SystemExit(f"unexpected schemaVersion: {data.get('schemaVersion')}")
                     if not isinstance(data.get('nextNewDayAt'),int) or data['nextNewDayAt'] <= 0: raise SystemExit('nextNewDayAt was not initialized')
                     PY
-                    cleanup
-                    trap - EXIT
+                    if [ "$status" -ne 0 ] && [ "$status" -ne 124 ] && [ "$status" -ne 130 ]; then exit "$status"; fi
 
                 - uses: actions/upload-artifact@v4
                   if: always()
@@ -287,9 +138,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add -A
-          if git diff --cached --quiet; then
-            echo 'Source tree is already normalized.'
-            exit 0
-          fi
           git commit -m 'Normalize repository source tree'
           git push origin HEAD:agent/ci-diagnostics

@@ -20,6 +20,7 @@ jobs:
 
       - name: Apply Fabric 26.2 build fixes
         run: |
+          sed -i "s/id 'fabric-loom'/id 'net.fabricmc.fabric-loom'/" fabric-towny/build.gradle
           sed -i '/officialMojangMappings()/d' fabric-towny/build.gradle
           sed -i 's/modImplementation /implementation /g' fabric-towny/build.gradle
           sed -i 's/modCompileOnly /compileOnly /g' fabric-towny/build.gradle

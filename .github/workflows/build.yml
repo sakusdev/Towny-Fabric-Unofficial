@@ -21,6 +21,7 @@ jobs:
       - name: Apply Fabric 26.2 build fixes
         run: |
           sed -i "s/id 'fabric-loom'/id 'net.fabricmc.fabric-loom'/" fabric-towny/build.gradle
+          sed -i '/officialMojangMappings()/d' fabric-towny/build.gradle
           sed -i 's/fabric_version=0.155.0+26.2/fabric_version=0.155.2+26.2/' fabric-towny/gradle.properties
           grep -q '^org.gradle.configuration-cache=' fabric-towny/gradle.properties || echo 'org.gradle.configuration-cache=false' >> fabric-towny/gradle.properties
           cat fabric-towny/build.gradle

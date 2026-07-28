@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "fabrictowny",
+  "version": "${version}",
+  "name": "Fabric Towny",
+  "description": "Server-side towns and chunk claims for Fabric 26.2.",
+  "authors": ["sakusdev"],
+  "license": "GPL-3.0-or-later",
+  "environment": "server",
+  "entrypoints": {
+    "main": ["dev.sakus.fabrictowny.FabricTowny"]
+  },
+  "suggests": {
+    "bluemap": "*"
+  },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~26.2",
+    "fabric-api": "*",
+    "java": ">=25"
+  }
+}

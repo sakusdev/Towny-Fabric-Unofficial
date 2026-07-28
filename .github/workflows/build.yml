@@ -57,7 +57,7 @@ jobs:
       - name: Dedicated server smoke test
         shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           mkdir -p fabric-towny/run
           printf 'eula=true\n' > fabric-towny/run/eula.txt
           cat > fabric-towny/run/server.properties <<'PROPERTIES'
@@ -70,19 +70,45 @@ jobs:
           sync-chunk-writes=true
           PROPERTIES
 
-          set +e
-          timeout --signal=INT --kill-after=15s 120s \
-            gradle -p fabric-towny runServer --stacktrace --info 2>&1 | tee server-smoke.log
-          status=${PIPESTATUS[0]}
-          set -e
-
+          gradle -p fabric-towny runServer --stacktrace --info > server-smoke.log 2>&1 &
+          server_pid=$!
           latest='fabric-towny/run/logs/latest.log'
+          ready=0
+
+          cleanup() {
+            if kill -0 "$server_pid" 2>/dev/null; then
+              kill -INT "$server_pid" 2>/dev/null || true
+              for _ in $(seq 1 15); do
+                kill -0 "$server_pid" 2>/dev/null || break
+                sleep 1
+              done
+              kill -KILL "$server_pid" 2>/dev/null || true
+            fi
+            wait "$server_pid" 2>/dev/null || true
+          }
+          trap cleanup EXIT
+
+          for _ in $(seq 1 120); do
+            if [ -f "$latest" ] && grep -Eiq 'Done \([0-9.]+s\)!|Done \([0-9.]+s\)|For help, type' "$latest"; then
+              ready=1
+              break
+            fi
+            if ! kill -0 "$server_pid" 2>/dev/null; then
+              cat server-smoke.log
+              exit 1
+            fi
+            sleep 1
+          done
+
+          if [ "$ready" -ne 1 ]; then
+            cat server-smoke.log
+            exit 1
+          fi
+
           config='fabric-towny/run/config/fabric-towny/config.json'
           data='fabric-towny/run/config/fabric-towny/data.json'
-          test -f "$latest"
           test -f "$config"
           test -f "$data"
-          grep -Eiq 'Done \([0-9.]+s\)!|Done \([0-9.]+s\)|For help, type' "$latest"
           grep -Eiq 'Fabric Towny loaded: 0 towns, 0 nations, 0 blocks' "$latest"
           ! grep -Eiq 'Failed to load properties|Exception|Crash report' "$latest"
 
@@ -110,9 +136,8 @@ jobs:
               raise SystemExit('nextNewDayAt was not initialized')
           PY
 
-          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ] && [ "$status" -ne 130 ]; then
-            exit "$status"
-          fi
+          cleanup
+          trap - EXIT
 
       - uses: actions/upload-artifact@v4
         if: always()

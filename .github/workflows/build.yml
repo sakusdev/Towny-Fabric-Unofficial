@@ -61,6 +61,7 @@ jobs:
               's.getPlayerOrThrow()': '(ServerPlayer)s.getEntity()',
               's.sendFeedback(': 's.sendSuccess(',
               's.sendError(': 's.sendFailure(',
+              'check(e,p,ClaimKey.of(w,pos),PermissionAction.DESTROY)': '(p instanceof ServerPlayer sp) && check(e,sp,ClaimKey.of(w,pos),PermissionAction.DESTROY)',
           }
 
           root = Path('fabric-towny/src/main/java')

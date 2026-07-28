@@ -8,6 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -36,12 +37,37 @@ jobs:
           set -o pipefail
           gradle -p fabric-towny clean build --stacktrace --info 2>&1 | tee build.log
 
+      - name: Dedicated server smoke test
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p fabric-towny/run
+          printf 'eula=true\n' > fabric-towny/run/eula.txt
+          set +e
+          timeout --signal=INT --kill-after=15s 120s \
+            gradle -p fabric-towny runServer --stacktrace --info 2>&1 | tee server-smoke.log
+          status=${PIPESTATUS[0]}
+          set -e
+
+          latest='fabric-towny/run/logs/latest.log'
+          test -f "$latest"
+          grep -Eiq 'Done \([0-9.]+s\)!|Done \([0-9.]+s\)|Dedicated server took|For help, type' "$latest"
+          grep -Eiq 'fabric-towny|Fabric Towny|Towny' "$latest"
+
+          # A timeout is expected because a healthy server keeps running.
+          if [ "$status" -ne 0 ] && [ "$status" -ne 124 ] && [ "$status" -ne 130 ]; then
+            exit "$status"
+          fi
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: fabric-towny-build
           path: |
             build.log
+            server-smoke.log
+            fabric-towny/run/logs/**
+            fabric-towny/run/config/**
             fabric-towny/build/libs/*.jar
             fabric-towny/build/reports/**
             fabric-towny/build/test-results/**

@@ -5,18 +5,15 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-
-      - name: Restore source tree
-        run: |
-          base64 --decode source-archive.zip.b64 > source-archive.zip
-          unzip -q source-archive.zip
-          cp -a fabric-towny/. .
-          rm -rf fabric-towny source-archive.zip
 
       - uses: actions/setup-java@v4
         with:
@@ -28,14 +25,78 @@ jobs:
         with:
           gradle-version: '9.5.1'
 
-      - name: Build
-        run: gradle build --stacktrace
+      - name: Build and test
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle clean build --stacktrace --info 2>&1 | tee build.log
+
+      - name: Dedicated server smoke test
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p run
+          printf 'eula=true\n' > run/eula.txt
+          cat > run/server.properties <<'PROPERTIES'
+          online-mode=false
+          server-port=25565
+          level-name=world
+          max-players=1
+          view-distance=2
+          simulation-distance=2
+          sync-chunk-writes=true
+          PROPERTIES
+
+          set +e
+          timeout --signal=INT --kill-after=10s 45s \
+            gradle runServer --stacktrace --info 2>&1 | tee server-smoke.log
+          status=${PIPESTATUS[0]}
+          set -e
+
+          latest='run/logs/latest.log'
+          test -f "$latest"
+          test -f run/config/fabric-towny/config.json
+          test -f run/config/fabric-towny/data.json
+          grep -Eiq 'Done \([0-9.]+s\)!|For help, type' "$latest"
+          grep -Eiq 'Fabric Towny loaded: 0 towns, 0 nations, 0 blocks' "$latest"
+          ! grep -Eiq 'Failed to load properties|Crash report' "$latest"
+
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          config = json.loads(Path('run/config/fabric-towny/config.json').read_text())
+          data = json.loads(Path('run/config/fabric-towny/data.json').read_text())
+          required = {
+              'townCreationCost', 'nationCreationCost', 'claimCost', 'outpostCost',
+              'baseTownBlocks', 'blocksPerResident', 'maxOutposts',
+              'inviteLifetimeMillis', 'newDayIntervalMillis',
+              'requireAdjacentClaims', 'allowFriendlyFire', 'wildernessBuild'
+          }
+          missing = required - config.keys()
+          if missing:
+              raise SystemExit(f'missing config keys: {sorted(missing)}')
+          if data.get('schemaVersion') != 3:
+              raise SystemExit(f"unexpected schemaVersion: {data.get('schemaVersion')}")
+          if not isinstance(data.get('nextNewDayAt'), int) or data['nextNewDayAt'] <= 0:
+              raise SystemExit('nextNewDayAt was not initialized')
+          PY
+
+          case "$status" in
+            0|124|130|137|143) ;;
+            *) exit "$status" ;;
+          esac
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: fabric-towny-build
           path: |
+            build.log
+            server-smoke.log
+            run/logs/**
+            run/config/**
             build/libs/*.jar
             build/reports/**
+            build/test-results/**
           if-no-files-found: ignore

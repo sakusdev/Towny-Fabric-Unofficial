@@ -14,9 +14,11 @@ jobs:
       - name: Restore source tree
         run: |
           tar -xJf source-archive.tar.xz
+          tar -xJf towny-patch-tests.tar.xz
           test -f fabric-towny/build.gradle
           test -f fabric-towny/gradle.properties
           test -d fabric-towny/src/main/java
+          test -d fabric-towny/src/test/java
 
       - uses: actions/setup-java@v4
         with:
@@ -28,11 +30,11 @@ jobs:
         with:
           gradle-version: '9.5.1'
 
-      - name: Build
+      - name: Build and test
         shell: bash
         run: |
           set -o pipefail
-          gradle -p fabric-towny build --stacktrace --info 2>&1 | tee build.log
+          gradle -p fabric-towny clean build --stacktrace --info 2>&1 | tee build.log
 
       - uses: actions/upload-artifact@v4
         if: always()
@@ -42,4 +44,5 @@ jobs:
             build.log
             fabric-towny/build/libs/*.jar
             fabric-towny/build/reports/**
+            fabric-towny/build/test-results/**
           if-no-files-found: ignore

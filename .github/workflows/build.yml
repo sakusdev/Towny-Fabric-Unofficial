@@ -21,6 +21,8 @@ jobs:
       - name: Apply Fabric 26.2 build fixes
         run: |
           sed -i '/officialMojangMappings()/d' fabric-towny/build.gradle
+          sed -i 's/modImplementation /implementation /g' fabric-towny/build.gradle
+          sed -i 's/modCompileOnly /compileOnly /g' fabric-towny/build.gradle
           sed -i 's/fabric_version=0.155.0+26.2/fabric_version=0.155.2+26.2/' fabric-towny/gradle.properties
           grep -q '^org.gradle.configuration-cache=' fabric-towny/gradle.properties || echo 'org.gradle.configuration-cache=false' >> fabric-towny/gradle.properties
           cat fabric-towny/build.gradle
